@@ -28,7 +28,7 @@ The system's architecture comprises of the following AWS services
 ## Strengths 
 
 
-**Scalability**: We can scale the number of request handlers without limit to meet demand for our WebSockets API.
+**Scalability**: The number of request handlers can be scaled without limit to meet demand for the WebSockets API.
 
 **Administrative Scalability**: The desired state of resources is defined with a CloudFormation template. This template is used to create a stack that manages updates to these resources. 
 
