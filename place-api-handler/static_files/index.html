@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en"> 
+	<head>
+		<meta charset="UTF-8" />
+                <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+                <meta http-equiv="Pragma" content="no-cache" />
+                <meta http-equiv="Expires" content="0" />
+
+		<title>r/place clone</title>
+		<script type="application/javascript" src="./jquery-3.7.1.min.js"></script>
+		<script type="text/javascript">
+			
+			var colours = {
+		"white" : {"r": 255, "g": 255, "b": 255},
+        "orange" : {"r": 255, "g": 168, "b": 0},
+        "yellow" : {"r": 255, "g": 214, "b": 53},
+        "green" : {"r": 0, "g": 163, "b": 104},
+        "lime" : {"r": 126, "g": 237, "b": 86},
+        "navy" : {"r": 36, "g": 80, "b": 164},
+        "blue" : {"r": 54, "g": 144, "b": 234},
+        "teal" : {"r": 81, "g": 233, "b": 244},
+        "purple" : {"r": 129, "g": 30, "b": 159},
+        "magenta" : {"r": 180, "g": 74, "b": 192},
+        "pink" : {"r": 255, "g": 153, "b": 170},
+        "brown" : {"r": 156, "g": 105, "b": 38},
+        "black" : {"r": 0, "g": 0, "b": 0},
+        "d_grey" : {"r": 137, "g": 141, "b": 144},
+        "l_grey" : {"r": 212, "g": 215, "b": 217},
+        "red" : {"r": 255, "g": 69, "b": 0}
+		}
+
+		var colourIDs = { 
+			0: "white",
+			1: "orange",
+			2: "yellow",
+			3: "green",
+			4: "lime",
+			5: "navy",
+			6: "blue",
+			7: "teal",
+			8: "purple",
+			9: "magenta",
+			10: "pink",
+			11: "brown",
+			12: "black",
+			13: "d_grey",
+			14: "l_grey",
+			15: "red"
+		}
+
+		var o = { 'x': 0, 'y': 0, 'r': 0, 'g':0, 'b':0 };
+		function setColour(colour) {
+			o.r = colours[colour].r;
+			o.g = colours[colour].g;
+			o.b = colours[colour].b;
+		}
+
+		function showNotice(duration) {
+			var noticeBox = document.getElementById("notice-box");
+			var noticeContent = document.getElementById("notice-content");
+
+			noticeContent.textContent = "You are sending requests too fast. Please wait a few minutes.";
+			noticeBox.style.display = "block";
+
+			setTimeout(function () {
+				noticeBox.style.display = "none";
+			}, duration);
+		}
+
+		
+			$(function(){
+				socket = new WebSocket("wss://8zsosr6pb0.execute-api.us-east-1.amazonaws.com/production/")
+
+				socket.onopen = function (event) { 
+					$('#sendButton').removeAttr('disabled');
+					fetchInitialBoard();
+				};
+
+				socket.onclose = function (event) { 
+					alert("closed code:" + event.code + " reason:" +event.reason + " wasClean:"+event.wasClean);
+					var disconnectMessage = { "action": "disconnect" };
+        			socket.send(JSON.stringify(disconnectMessage));
+				};
+
+				socket.onmessage = function (event) {
+					var o=JSON.parse(event.data);
+					console.log(o);
+					if (o.ScannedCount) {
+						// Loop through updated items and color each pixel
+						for (var i = 0; i < o.Items.length; i++) {
+							var item = o.Items[i];
+							var x = parseInt(item.cell.split(',')[0].slice(1)); 
+							var y = parseInt(item.cell.split(',')[1].slice(0, -1));
+							var color = colours[colourIDs[item.data.color]];
+							colorPixel(x, y, color.r, color.g, color.b);
+						}
+					} else {
+						colorPixel(o.x, o.y, o.r, o.g, o.b);
+					}
+				}
+
+				function colorPixel(x, y, r, g, b) {
+					var context = document.getElementById('canvas').getContext('2d');
+					context.fillStyle = 'rgb('+r+','+g+','+b+')';
+		   			context.fillRect(x, y, 1, 1);
+				}
+
+				function fetchInitialBoard() {
+					var endpointURL = "https://z4jr7oot5j.execute-api.us-east-1.amazonaws.com/LATEST/fetchBoard";
+					$.ajax({
+						url: endpointURL,
+						type: "GET",
+						success: function(data) {
+							var buffer = new ArrayBuffer(500000);
+							var boardData = new Uint8Array(buffer);
+							var oneDColors = [];
+							for (var i = 0; i < 500000; i++) {
+								boardData[i] = data.body.charCodeAt(i); 
+								const color1 = boardData[i] >>> 4;
+								const color2 = boardData[i] & 0b00001111;
+								oneDColors.push(color1);
+								oneDColors.push(color2);
+							}
+
+							// Each cell has 4-bit color information for 2 adjacent cells
+							for (let i = 0; i < 1000000; i++) { // x = 5, y = 10 -> 5010
+								var x = Math.floor(i / 1000);
+								var y = i - (x * 1000);
+								var c1 = colours[colourIDs[oneDColors[i]]];
+								colorPixel(x, y, c1.r, c1.g, c1.b);
+							}
+							
+							// Get any missed updates since the initial board fetch
+							var getBoard = {"action": "getBoard"};
+							socket.send(JSON.stringify(getBoard));
+						},
+						error: function(xhr, status, error) {
+							console.error("Error fetching initial board data:", error);
+						}
+					});
+				}
+
+				// click event based off the following post: https://stackoverflow.com/a/19602465
+				var isDown = false;
+				var timer;
+				var too_early = false;
+				var clickTimer;
+				$('#canvas').mousedown(function(event){
+					timer = setTimeout(function(){
+						isDown = true;
+					}, 500);
+				}).mouseup(function(){
+					if(isDown === false){
+
+						if (too_early === false) {
+
+							var x=event.pageX-this.offsetLeft;
+							var y=event.pageY-this.offsetTop;
+							var submission = { "action": "update", "message": {"x": x, "y": y, "r": o.r, "g": o.g, "b": o.b} };
+							socket.send(JSON.stringify(submission));
+							too_early = true;
+
+							clickTimer = setTimeout(function(){
+								too_early = false;
+							}, 300000);
+
+						}else {
+							showNotice(5000);
+						}
+
+					}else{
+
+					}
+					clearTimeout(timer);   
+					isDown = false; 
+				});
+			});
+		
+		</script>
+		
+		<style>
+                        body {
+                                text-align: center;
+                                align: center;
+                                overflow: hidden;
+                                margin: 0px;
+                                padding: 0px;
+                        }
+                        canvas {
+                                border: 1px solid black;
+                        }
+                        input[type=number]{ width: 3em; }
+
+						#notice-box {
+								margin:auto;
+								width: 50%;
+								top: 10px;
+								right: 10px;
+								background-color: rgb(240, 99, 89);
+								padding: 10px;
+								border-radius: 5px;
+								display: none;
+								animation: fade 4.9s ease-in-out infinite;
+						}
+
+						#notice-content {
+								font-weight: bold;
+								
+						}
+
+						@keyframes fade {
+							0% {
+								opacity: 0;
+							}
+							50% {
+								opacity: 1;
+							}
+							100% {
+								opacity: 0;
+							}
+						}
+                </style>
+	</head>
+	<body>
+		<h1>r/place clone</h1>
+
+		<canvas id="canvas" width="1000" height="1000" ></canvas>
+		<form id="setForm">
+				<p>
+					<button style="background-color:rgb(255, 69, 0);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('red')"></button>
+					<button style="background-color:rgb(255, 168, 0);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('orange')"></button>
+					<button style="background-color:rgb(255, 214, 53);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('yellow')"></button>
+					<button style="background-color:rgb(0, 163, 104);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('green')"></button>
+					<button style="background-color:rgb(126, 237, 86);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('lime')"></button>
+					<button style="background-color:rgb(36, 80, 164);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('navy')"></button>
+					<button style="background-color:rgb(54, 144, 234);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('blue')"></button>
+					<button style="background-color:rgb(81, 233, 244);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('teal')"></button>
+					</p>
+					<p>
+					<button style="background-color:rgb(129, 30, 159);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('purple')"></button>
+					<button style="background-color:rgb(180, 74, 192);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('magenta')"></button>
+					<button style="background-color:rgb(255, 153, 170);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('pink')"></button>
+					<button style="background-color:rgb(156, 105, 38);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('brown')"></button>
+					<button style="background-color:rgb(0, 0, 0);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('black')"></button>
+					<button style="background-color:rgb(137, 141, 144);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('d_grey')"></button>
+					<button style="background-color:rgb(212, 215, 217);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('l_grey')"></button>
+					<button style="background-color:rgb(255, 255, 255);width:50px;height:5em;min-width:40px;" type="button" onclick="setColour('white')"></button>
+					</p>
+					<h2>
+						<div id="notice-box">
+							<span id="notice-content"></span>
+						</div>
+					</h2>
+		</form>
+	</body>
+</html>
+

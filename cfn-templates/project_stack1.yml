@@ -1,0 +1,866 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Metadata:
+    Generator: "former2"
+Description: ""
+Parameters:
+  VPCName:
+    Type: String
+    Default: "test-vpc"
+    Description: "Enter the VPC Name."
+
+  RedisNodeName:
+    Type: String 
+    Default: "app-redis-001"
+    Description: "Specify the Redis Node Name"
+    
+  RedisInstanceType:
+    Type: String
+    Default: cache.t2.micro
+    Description: "Specify the Redis Instance Type. Default is t2.micro"
+    AllowedValues:
+      - cache.t2.micro
+      - cache.m1.small
+      - cache.m1.large
+
+  WsAPIName:
+    Type: String
+    Default: "place-api"
+    Description: "Specify the name for the websockets API"
+
+  RestAPIName:
+    Type: String
+    Default: "fetch-board-api"
+    Description: "Specify the name for the REST API"
+
+  ApiHandlerName:
+    Type: String
+    Default: "ApiHandler"
+    Description: "Specify the name for the API Handler"
+
+  TakeSnapshotName:
+    Type: String 
+    Default: "TakeSnapshot"
+    Description: "Specify the name for snapshot CRON job"
+
+  FetchBoardName:
+    Type: String
+    Default: "fetchBoard"
+    Description: "Specify the name for the function that fetches the board from S3"
+
+  SchedulerName:
+    Type: String
+    Default: "snapshot-scheduler"
+    Description: "Specify the name for the snapshot scheduler."
+
+Resources:
+    EC2Subnet:
+        Type: "AWS::EC2::Subnet"
+        Properties:
+            AvailabilityZone: !GetAtt EC2Subnet2.AvailabilityZone
+            CidrBlock: "15.0.16.0/20"
+            VpcId: !Ref EC2VPC
+            MapPublicIpOnLaunch: false
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-subnet-public2-${EC2Subnet2.AvailabilityZone}"
+
+    EC2Subnet2:
+        Type: "AWS::EC2::Subnet"
+        Properties:
+            AvailabilityZone: !Sub "${AWS::Region}b"
+            CidrBlock: "15.0.144.0/20"
+            VpcId: !Ref EC2VPC
+            MapPublicIpOnLaunch: false
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-subnet-private2-${AWS::Region}b"
+
+    EC2Subnet3:
+        Type: "AWS::EC2::Subnet"
+        Properties:
+            AvailabilityZone: !GetAtt EC2Subnet4.AvailabilityZone
+            CidrBlock: "15.0.0.0/20"
+            VpcId: !Ref EC2VPC
+            MapPublicIpOnLaunch: false
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-subnet-public1-${EC2Subnet4.AvailabilityZone}"
+
+    EC2Subnet4:
+        Type: "AWS::EC2::Subnet"
+        Properties:
+            AvailabilityZone: !Sub "${AWS::Region}a"
+            CidrBlock: "15.0.128.0/20"
+            VpcId: !Ref EC2VPC
+            MapPublicIpOnLaunch: false
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-subnet-private1-${AWS::Region}a"
+
+    EC2VPC:
+        Type: "AWS::EC2::VPC"
+        Properties:
+            CidrBlock: "15.0.0.0/16"
+            EnableDnsSupport: true
+            EnableDnsHostnames: true
+            InstanceTenancy: "default"
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}"
+                  
+    EC2InternetGateway:
+        Type: "AWS::EC2::InternetGateway"
+        Properties:
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-igw"
+                
+    EC2EIP:
+        Type: "AWS::EC2::EIP"
+        Properties:
+            Domain: "vpc"
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "project-eip-${EC2Subnet3.AvailabilityZone}"
+
+    EC2VPCDHCPOptionsAssociation:
+        Type: "AWS::EC2::VPCDHCPOptionsAssociation"
+        Properties:
+            DhcpOptionsId: "dopt-049d0ddaa603b1867"
+            VpcId: !GetAtt EC2Subnet.VpcId
+
+    EC2RouteTable:
+        Type: "AWS::EC2::RouteTable"
+        Properties:
+            VpcId: !GetAtt EC2Subnet.VpcId
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-rtb-public"
+
+    EC2RouteTable2:
+        Type: "AWS::EC2::RouteTable"
+        Properties:
+            VpcId: !GetAtt EC2Subnet.VpcId
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-rtb-private1-${EC2Subnet3.AvailabilityZone}"
+
+    EC2RouteTable3:
+        Type: "AWS::EC2::RouteTable"
+        Properties:
+            VpcId: !GetAtt EC2Subnet.VpcId
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-rtb-private2-${EC2Subnet.AvailabilityZone}"
+
+    EC2Route:
+        Type: "AWS::EC2::Route"
+        Properties:
+            DestinationCidrBlock: "0.0.0.0/0"
+            GatewayId: !Ref EC2InternetGateway
+            RouteTableId: !Ref EC2RouteTable
+
+    EC2Route2:
+      Type: "AWS::EC2::Route"
+      Properties:
+          DestinationCidrBlock: "0.0.0.0/0"
+          NatGatewayId: !Ref EC2NatGateway
+          RouteTableId: !Ref EC2RouteTable2
+
+    EC2Route3:
+      Type: "AWS::EC2::Route"
+      Properties:
+            DestinationCidrBlock: "0.0.0.0/0"
+            NatGatewayId: !Ref EC2NatGateway
+            RouteTableId: !Ref EC2RouteTable3
+      
+        
+    EC2VPCGatewayAttachment:
+        Type: "AWS::EC2::VPCGatewayAttachment"
+        Properties:
+            InternetGatewayId: !Ref EC2InternetGateway
+            VpcId: !GetAtt EC2Subnet.VpcId
+
+    EC2VPCEndpoint:
+        Type: "AWS::EC2::VPCEndpoint"
+        Properties:
+            VpcEndpointType: "Gateway"
+            VpcId: !GetAtt EC2Subnet.VpcId
+            ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+            PolicyDocument: "{\"Version\":\"2008-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+            RouteTableIds: 
+              - !Ref EC2RouteTable2
+              - !Ref EC2RouteTable3
+            PrivateDnsEnabled: false
+
+    EC2VPCEndpoint2:
+        Type: "AWS::EC2::VPCEndpoint"
+        Properties:
+            VpcEndpointType: "Gateway"
+            VpcId: !GetAtt EC2Subnet.VpcId
+            ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+            PolicyDocument: "{\"Version\":\"2008-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+            RouteTableIds: 
+              - !Ref EC2RouteTable2
+              - !Ref EC2RouteTable3
+            PrivateDnsEnabled: false
+
+    EC2SubnetRouteTableAssociation:
+        Type: "AWS::EC2::SubnetRouteTableAssociation"
+        Properties:
+            RouteTableId: !Ref EC2RouteTable
+            SubnetId: !Ref EC2Subnet
+
+    EC2SubnetRouteTableAssociation2:
+        Type: "AWS::EC2::SubnetRouteTableAssociation"
+        Properties:
+            RouteTableId: !Ref EC2RouteTable
+            SubnetId: !Ref EC2Subnet3
+
+    EC2SubnetRouteTableAssociation3:
+        Type: "AWS::EC2::SubnetRouteTableAssociation"
+        Properties:
+            RouteTableId: !Ref EC2RouteTable2
+            SubnetId: !Ref EC2Subnet4
+
+    EC2SubnetRouteTableAssociation4:
+        Type: "AWS::EC2::SubnetRouteTableAssociation"
+        Properties:
+            RouteTableId: !Ref EC2RouteTable3
+            SubnetId: !Ref EC2Subnet2
+
+    EC2NatGateway:
+        Type: "AWS::EC2::NatGateway"
+        Properties:
+            SubnetId: !Ref EC2Subnet3
+            Tags: 
+              - 
+                Key: "Name"
+                Value: !Sub "${VPCName}-nat-gateway"
+            AllocationId: !GetAtt EC2EIP.AllocationId
+
+    # Provisioning Redis cluster in ElastiCache
+
+
+    CacheSecurityGroup:
+        Type: "AWS::EC2::SecurityGroup"
+        Properties:
+            GroupDescription: "Restrict Inbound Traffic to port 6379 for Redis"
+            GroupName: !Sub "${RedisNodeName}-firewall"
+            VpcId: !Ref EC2VPC
+            SecurityGroupIngress: 
+              - 
+                CidrIp: "0.0.0.0/0"
+                FromPort: 0
+                IpProtocol: "tcp"
+                ToPort: 6379
+            SecurityGroupEgress: 
+              - 
+                CidrIp: "0.0.0.0/0"
+                IpProtocol: "-1"
+
+    ElastiCacheSubnetGroup:
+      Type: 'AWS::ElastiCache::SubnetGroup'
+      Properties:
+        Description: Cache Subnet Group
+        SubnetIds:
+          - !Ref EC2Subnet4
+
+    ElastiCacheCacheCluster:
+        Type: "AWS::ElastiCache::CacheCluster"
+        Properties:
+            CacheNodeType: !Ref RedisInstanceType 
+            Engine: "redis"
+            EngineVersion: "7.1"
+            NumCacheNodes: 1
+            PreferredAvailabilityZone: !Sub "${AWS::Region}a"
+            PreferredMaintenanceWindow: "sun:04:00-sun:05:00"
+            CacheParameterGroupName: "default.redis7"
+            CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
+            AutoMinorVersionUpgrade: false
+            VpcSecurityGroupIds: 
+              - !Ref CacheSecurityGroup
+            SnapshotRetentionLimit: 0
+            SnapshotWindow: "08:00-09:00"
+            ClusterName: !Ref RedisNodeName
+
+
+    # Creating S3 bucket for source code 
+
+
+    # Provision DynamoDB Tables 
+
+
+    BoardCellsTable:
+        Type: "AWS::DynamoDB::Table"
+        Properties:
+            AttributeDefinitions: 
+              - 
+                AttributeName: "board_id"
+                AttributeType: "N"
+              - 
+                AttributeName: "cell"
+                AttributeType: "S"
+            TableName: "board_cells"
+            KeySchema: 
+              - 
+                AttributeName: "board_id"
+                KeyType: "HASH"
+              - 
+                AttributeName: "cell"
+                KeyType: "RANGE"
+            ProvisionedThroughput: 
+                ReadCapacityUnits: 1
+                WriteCapacityUnits: 1
+
+
+    CooldownsTable:
+        Type: "AWS::DynamoDB::Table"
+        Properties:
+            AttributeDefinitions: 
+              - 
+                AttributeName: "userid"
+                AttributeType: "S"
+            TableName: "cooldowns"
+            KeySchema: 
+              - 
+                AttributeName: "userid"
+                KeyType: "HASH"
+            ProvisionedThroughput: 
+                ReadCapacityUnits: 1
+                WriteCapacityUnits: 1
+
+
+    ApplicationAutoScalingScalableTarget:
+        Type: "AWS::ApplicationAutoScaling::ScalableTarget"
+        Properties:
+            MaxCapacity: 10
+            MinCapacity: 1
+            ResourceId: !Sub "table/${BoardCellsTable}"
+            RoleARN: !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable"
+            ScalableDimension: "dynamodb:table:ReadCapacityUnits"
+            ServiceNamespace: "dynamodb"
+            SuspendedState: 
+                DynamicScalingInSuspended: false
+                DynamicScalingOutSuspended: false
+                ScheduledScalingSuspended: false
+
+    ApplicationAutoScalingScalableTarget2:
+        Type: "AWS::ApplicationAutoScaling::ScalableTarget"
+        Properties:
+            MaxCapacity: 10
+            MinCapacity: 1
+            ResourceId: !Sub "table/${CooldownsTable}"
+            RoleARN: !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable"
+            ScalableDimension: "dynamodb:table:WriteCapacityUnits"
+            ServiceNamespace: "dynamodb"
+            SuspendedState: 
+                DynamicScalingInSuspended: false
+                DynamicScalingOutSuspended: false
+                ScheduledScalingSuspended: false
+
+
+    # Provision API Handler lambda function
+    HandlerFunction:
+        Type: "AWS::Lambda::Function"
+        Properties:
+            Description: ""
+            FunctionName: !Ref ApiHandlerName
+            Handler: "index.handler"
+            Architectures: 
+              - "x86_64"
+            Code: 
+                S3Bucket: "project-bucket-abc"
+                S3Key: "place_api_handler.zip"
+            MemorySize: 128
+            Role: !GetAtt HandlerIAMRole.Arn
+            Runtime: "nodejs20.x"
+            Timeout: 15
+            TracingConfig: 
+                Mode: "PassThrough"
+            VpcConfig: 
+                SubnetIds: 
+                  - !Ref EC2Subnet2
+                  - !Ref EC2Subnet4
+                SecurityGroupIds: 
+                  - !Ref HandlerSecurityGroup
+            Environment:
+              Variables:
+                "WS_API_ENDPOINT": !Sub "https://${ApiGatewayV2Api}.execute-api.${AWS::Region}.amazonaws.com/production"
+                "REDIS_ENDPOINT": !GetAtt ElastiCacheCacheCluster.RedisEndpoint.Address
+            EphemeralStorage: 
+                Size: 512
+
+    HandlerIAMRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+
+            AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+            MaxSessionDuration: 3600
+            ManagedPolicyArns: 
+              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaBasicExecutionRole-029ee58b-a472-4979-910a-a15c00f84f92"
+              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaVPCAccessExecutionRole-cd2cd2f4-84b4-4cba-af5d-696ee1513da4"
+              - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
+              - "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+              - "arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess"
+              - "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
+              - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+              - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+
+    HandlerSecurityGroup:
+        Type: "AWS::EC2::SecurityGroup"
+        Properties:
+            GroupDescription: "Allow Handler Function to Communicate with Redis, DynamoDB"
+            GroupName: "HandlerSG"
+            VpcId: !Ref EC2VPC
+            SecurityGroupIngress: 
+              - 
+                CidrIp: "0.0.0.0/0"
+                FromPort: 0
+                IpProtocol: "tcp"
+                ToPort: 65336
+            SecurityGroupEgress: 
+              - 
+                CidrIp: "0.0.0.0/0"
+                IpProtocol: "-1"
+
+
+    # Provision TakeSnapshot Lambda Function
+
+    TakeSnapshotFunction:
+        Type: "AWS::Lambda::Function"
+        Properties:
+            Description: ""
+            FunctionName: !Ref TakeSnapshotName
+            Handler: "index.handler"
+            Architectures: 
+              - "x86_64"
+            Code: 
+                S3Bucket: "project-bucket-abc"
+                S3Key: "board_snapshots.zip"
+            MemorySize: 128
+            Role: !GetAtt TakeSnapshotFunctionIAMRole.Arn
+            Runtime: "nodejs20.x"
+            Timeout: 10
+            TracingConfig: 
+                Mode: "PassThrough"
+            VpcConfig: 
+                SubnetIds: 
+                  - !Ref EC2Subnet2
+                  - !Ref EC2Subnet4
+                SecurityGroupIds: 
+                  - !Ref HandlerSecurityGroup
+            EphemeralStorage: 
+                Size: 512
+
+    TakeSnapshotFunctionIAMRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+            MaxSessionDuration: 3600
+            ManagedPolicyArns: 
+              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaBasicExecutionRole-7418bad7-abaa-468f-a3b0-4b49a6c177cf"
+              - "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+              - "arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess"
+              - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+
+
+
+    # FIX: Schedule the TakeSnapshot function to run every 10 minutes
+            
+    ScheduleTakeSnapshot:
+        Type: "AWS::Scheduler::Schedule"
+        Properties:
+            Name: !Ref SchedulerName
+            Description: ""
+            State: "ENABLED"
+            GroupName: "default"
+            ScheduleExpression: "rate(1 minutes)"
+            ScheduleExpressionTimezone: "America/Toronto"
+            FlexibleTimeWindow: 
+                Mode: "OFF"
+            Target: 
+                Arn: !GetAtt TakeSnapshotFunction.Arn
+                Input: "{}"
+                RetryPolicy: 
+                    MaximumEventAgeInSeconds: 86400
+                    MaximumRetryAttempts: 0
+                RoleArn: !GetAtt SchedulerIAMRole.Arn
+
+    SchedulerIAMRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument: !Sub "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"scheduler.amazonaws.com\"},\"Action\":\"sts:AssumeRole\",\"Condition\":{\"StringEquals\":{\"aws:SourceAccount\":\"${AWS::AccountId}\"}}}]}"
+            MaxSessionDuration: 3600
+            Policies:
+              - PolicyName: EventBridgeExecutionPolicy
+                PolicyDocument:
+                  Version: "2012-10-17"
+                  Statement:
+                    - Effect: Allow
+                      Action: lambda:InvokeFunction
+                      Resource: '*'
+
+    # Create Websockets API Gateway 
+
+    ApiGatewayV2Api:
+        Type: "AWS::ApiGatewayV2::Api"
+        Properties:
+            Name: !Ref WsAPIName
+            ApiKeySelectionExpression: "$request.header.x-api-key"
+            ProtocolType: "WEBSOCKET"
+            RouteSelectionExpression: "$request.body.action"
+            DisableExecuteApiEndpoint: false
+
+    ApiGatewayV2Deployment:
+        Type: "AWS::ApiGatewayV2::Deployment"
+        DependsOn:
+          - ApiGatewayV2Route
+          - ApiGatewayV2Route2
+          - ApiGatewayV2Route3
+          - ApiGatewayV2Route4
+          - ApiGatewayV2Route5
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            Description: "This first deployment was created by the console during API creation."
+
+    ApiGatewayV2Stage:
+        Type: "AWS::ApiGatewayV2::Stage"
+        Properties:
+            StageName: "production"
+            StageVariables: {}
+            ApiId: !Ref ApiGatewayV2Api
+            DeploymentId: !Ref ApiGatewayV2Deployment
+            RouteSettings: {}
+            DefaultRouteSettings: 
+                DataTraceEnabled: false
+                DetailedMetricsEnabled: false
+                LoggingLevel: "OFF"
+
+    IntegrationPermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt HandlerFunction.Arn 
+        Principal: apigateway.amazonaws.com 
+        SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayV2Api}/*/update"
+
+    ApiGatewayV2Integration:
+        Type: "AWS::ApiGatewayV2::Integration"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ConnectionType: "INTERNET"
+            IntegrationMethod: "POST"
+            IntegrationType: "AWS_PROXY"
+            IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HandlerFunction.Arn}/invocations"
+            PassthroughBehavior: "WHEN_NO_MATCH"
+            TimeoutInMillis: 29000
+            PayloadFormatVersion: "1.0"
+
+    ApiGatewayV2Route4:
+      Type: "AWS::ApiGatewayV2::Route"
+      Properties:
+          ApiId: !Ref ApiGatewayV2Api
+          ApiKeyRequired: false
+          AuthorizationType: "NONE"
+          RouteKey: "update"
+          Target: !Sub "integrations/${ApiGatewayV2Integration}"
+
+
+    IntegrationPermission2:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt HandlerFunction.Arn 
+        Principal: apigateway.amazonaws.com 
+        SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayV2Api}/*/$disconnect"
+
+
+    ApiGatewayV2Integration2:
+        Type: "AWS::ApiGatewayV2::Integration"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ConnectionType: "INTERNET"
+            IntegrationMethod: "POST"
+            IntegrationType: "AWS_PROXY"
+            IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HandlerFunction.Arn}/invocations"
+            PassthroughBehavior: "WHEN_NO_MATCH"
+            TimeoutInMillis: 29000
+            PayloadFormatVersion: "1.0"
+
+    ApiGatewayV2Route5:
+        Type: "AWS::ApiGatewayV2::Route"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ApiKeyRequired: false
+            AuthorizationType: "NONE"
+            RouteKey: "$disconnect"
+            Target: !Sub "integrations/${ApiGatewayV2Integration2}"
+
+
+    IntegrationPermission3:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt HandlerFunction.Arn 
+        Principal: apigateway.amazonaws.com 
+        SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayV2Api}/*/$default"
+
+    ApiGatewayV2Integration3:
+        Type: "AWS::ApiGatewayV2::Integration"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ConnectionType: "INTERNET"
+            IntegrationMethod: "POST"
+            IntegrationType: "AWS_PROXY"
+            IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HandlerFunction.Arn}/invocations"
+            PassthroughBehavior: "WHEN_NO_MATCH"
+            TimeoutInMillis: 29000
+            PayloadFormatVersion: "1.0"
+
+    ApiGatewayV2Route:
+        Type: "AWS::ApiGatewayV2::Route"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ApiKeyRequired: false
+            AuthorizationType: "NONE"
+            RouteKey: "$default"
+            Target: !Sub "integrations/${ApiGatewayV2Integration3}"
+
+    IntegrationPermission4:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt HandlerFunction.Arn 
+        Principal: apigateway.amazonaws.com 
+        SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayV2Api}/*/getBoard"
+
+    ApiGatewayV2Integration4:
+        Type: "AWS::ApiGatewayV2::Integration"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ConnectionType: "INTERNET"
+            ContentHandlingStrategy: "CONVERT_TO_TEXT"
+            IntegrationMethod: "POST"
+            IntegrationType: "AWS_PROXY"
+            IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HandlerFunction.Arn}/invocations"
+            PassthroughBehavior: "WHEN_NO_MATCH"
+            TimeoutInMillis: 29000
+            PayloadFormatVersion: "1.0"
+
+    ApiGatewayV2Route2:
+        Type: "AWS::ApiGatewayV2::Route"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ApiKeyRequired: false
+            AuthorizationType: "NONE"
+            RouteKey: "getBoard"
+            Target: !Sub "integrations/${ApiGatewayV2Integration4}"
+
+    IntegrationPermission5:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt HandlerFunction.Arn 
+        Principal: apigateway.amazonaws.com 
+        SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayV2Api}/*/$connect"
+
+    ApiGatewayV2Integration5:
+        Type: "AWS::ApiGatewayV2::Integration"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ConnectionType: "INTERNET"
+            IntegrationMethod: "POST"
+            IntegrationType: "AWS_PROXY"
+            IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HandlerFunction.Arn}/invocations"
+            PassthroughBehavior: "WHEN_NO_MATCH"
+            TimeoutInMillis: 29000
+            PayloadFormatVersion: "1.0"
+
+    ApiGatewayV2Route3:
+        Type: "AWS::ApiGatewayV2::Route"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ApiKeyRequired: false
+            AuthorizationType: "NONE"
+            RouteKey: "$connect"
+            Target: !Sub "integrations/${ApiGatewayV2Integration5}"
+
+    # Provision Lambda function for getting board from S3
+
+
+    FetchBoardFunction:
+        Type: "AWS::Lambda::Function"
+        Properties:
+            Description: ""
+            FunctionName: !Ref FetchBoardName 
+            Handler: "lambda_function.lambda_handler"
+            Architectures: 
+              - "x86_64"
+            Code: 
+                S3Bucket: "project-bucket-abc"
+                S3Key: "fetch_Board_S3.zip"
+            MemorySize: 128
+            Role: !GetAtt FetchBoardIAMRole.Arn
+            Runtime: "python3.11"
+            Timeout: 3
+            TracingConfig: 
+                Mode: "PassThrough"
+            VpcConfig: 
+                SubnetIds: 
+                  - !Ref EC2Subnet2 
+                  - !Ref EC2Subnet4 
+                SecurityGroupIds: 
+                  - !Ref HandlerSecurityGroup
+            EphemeralStorage: 
+                Size: 512
+
+    FetchBoardIAMRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+            MaxSessionDuration: 3600
+            ManagedPolicyArns: 
+              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaVPCAccessExecutionRole-d00a020f-10c3-4784-8a92-a53152c6e934"
+              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaBasicExecutionRole-69e09d8f-1b44-4db6-a2e9-55d84bf688fc"
+              - "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
+              - "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+
+    # Create REST API in API Gateway 
+
+    ApiGatewayRestApi:
+        Type: "AWS::ApiGateway::RestApi"
+        Properties:
+            Name: !Ref RestAPIName 
+            Description: "REST version of fetchS3Board API"
+            ApiKeySourceType: "HEADER"
+            EndpointConfiguration: 
+                Types: 
+                  - "REGIONAL"
+
+
+    GatewayResponses4xx:
+        Type: AWS::ApiGateway::GatewayResponse
+        Properties: 
+          ResponseParameters: 
+            gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+            gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+            gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          ResponseType: DEFAULT_4XX
+          RestApiId: !Ref ApiGatewayRestApi
+
+    GatewayResponses5xx:
+        Type: AWS::ApiGateway::GatewayResponse
+        Properties: 
+          ResponseParameters: 
+            gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+            gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+            gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          ResponseType: DEFAULT_5XX
+          RestApiId: !Ref ApiGatewayRestApi
+
+    ApiGatewayDeployment:
+        Type: "AWS::ApiGateway::Deployment"
+        DependsOn:
+          - ApiGatewayMethod
+          - ApiGatewayMethod2
+        Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+
+    ApiGatewayStage:
+        Type: "AWS::ApiGateway::Stage"
+        Properties:
+            StageName: "LATEST"
+            DeploymentId: !Ref ApiGatewayDeployment
+            RestApiId: !Ref ApiGatewayRestApi
+
+    ApiGatewayResource:
+        Type: "AWS::ApiGateway::Resource"
+        Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            PathPart: "fetchBoard"
+            ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+
+
+    ApiGatewayMethod:
+        Type: "AWS::ApiGateway::Method"
+        Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            ResourceId: !Ref ApiGatewayResource
+            HttpMethod: "OPTIONS"
+            AuthorizationType: "NONE"
+            ApiKeyRequired: false
+            RequestParameters: {}
+            MethodResponses: 
+              - 
+                ResponseModels: 
+                    "application/json": 'Empty'
+                ResponseParameters: 
+                    "method.response.header.Access-Control-Allow-Headers": false
+                    "method.response.header.Access-Control-Allow-Methods": false
+                    "method.response.header.Access-Control-Allow-Origin": false
+                StatusCode: "200"
+            Integration: 
+                Uri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FetchBoardFunction.Arn}/invocations"
+                CacheNamespace: !Ref ApiGatewayResource
+                IntegrationResponses: 
+                  - 
+                    ResponseParameters: 
+                        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                        "method.response.header.Access-Control-Allow-Methods": "'GET,OPTIONS'"
+                        "method.response.header.Access-Control-Allow-Origin": "'*'"
+                    StatusCode: "200"
+                PassthroughBehavior: "WHEN_NO_MATCH"
+                RequestTemplates: 
+                    "application/json": "{\"statusCode\": 200}"
+                TimeoutInMillis: 29000
+                Type: "MOCK"
+
+
+    ApiGatewayMethod2:
+        Type: "AWS::ApiGateway::Method"
+        Properties:
+            RestApiId: !Ref ApiGatewayRestApi
+            ResourceId: !Ref ApiGatewayResource
+            HttpMethod: "GET"
+            AuthorizationType: "NONE"
+            ApiKeyRequired: false
+            RequestParameters: {}
+            MethodResponses: 
+              - 
+                ResponseModels: 
+                    "application/json": 'Empty'
+                ResponseParameters: 
+                    "method.response.header.Access-Control-Allow-Origin": false
+                StatusCode: "200"
+            Integration: 
+                Uri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FetchBoardFunction.Arn}/invocations"
+                CacheNamespace: !Ref ApiGatewayResource
+                IntegrationHttpMethod: "POST"
+                IntegrationResponses: 
+                  - 
+                    ResponseParameters: 
+                        "method.response.header.Access-Control-Allow-Origin": "'*'"
+                    ResponseTemplates: {}
+                    StatusCode: "200"
+                PassthroughBehavior: "WHEN_NO_MATCH"
+                TimeoutInMillis: 29000
+                Type: "AWS"
+
+    RESTIntegrationPermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt FetchBoardFunction.Arn 
+        Principal: apigateway.amazonaws.com 
+        SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/GET/fetchBoard"
