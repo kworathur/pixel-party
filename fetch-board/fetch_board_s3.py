@@ -1,4 +1,5 @@
 import json
+import os
 import boto3
 
 s3 = boto3.resource('s3') 
@@ -6,7 +7,7 @@ s3 = boto3.resource('s3')
 
 def lambda_handler(event, context):
 
-    content_object = s3.Object('project-bucket-abc', 'board.json')
+    content_object = s3.Object(os.getenv('PROJ_BUCKET'), 'board.json')
     file_content = content_object.get()['Body'].read().decode('utf-8')
     json_content = json.loads(file_content)
     

@@ -1,6 +1,7 @@
 const {createClient } = require('redis');
-const redisHost = 'app-redis-001.esgctz.0001.use1.cache.amazonaws.com';
-const redisPort = 6379;
+// TODO: read redis hostname as env variable 
+const redisHost = process.env.REDIS_HOST;
+const redisPort = parseInt(process.env.REDIS_PORT);
 const redisClient = createClient({socket: {host: redisHost, port: redisPort, connectTimeout: 100000}});
 redisClient.on('error', err => console.log('Redis Client: ', err));
 redisClient.connect().catch(err => console.log('Error connecting to client', err));
@@ -11,7 +12,7 @@ const client = new S3Client({});
 
 const tile_colors = require('./tile_colors.json');
 
-const bucketName = 'project-bucket-abc';
+const bucketName = process.env.PROJ_BUCKET; 
 const dim = 1000;
 async function takeBoardSnapshot(board) {
 
