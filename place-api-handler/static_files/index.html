@@ -6,7 +6,7 @@
                 <meta http-equiv="Pragma" content="no-cache" />
                 <meta http-equiv="Expires" content="0" />
 
-		<title>r/place clone</title>
+		<title>Pixel Party</title>
 		<script type="application/javascript" src="./jquery-3.7.1.min.js"></script>
 		<script type="text/javascript">
 			
@@ -69,7 +69,7 @@
 
 		
 			$(function(){
-				socket = new WebSocket("wss://8zsosr6pb0.execute-api.us-east-1.amazonaws.com/production/")
+				socket = new WebSocket("")
 
 				socket.onopen = function (event) { 
 					$('#sendButton').removeAttr('disabled');
@@ -106,7 +106,7 @@
 				}
 
 				function fetchInitialBoard() {
-					var endpointURL = "https://z4jr7oot5j.execute-api.us-east-1.amazonaws.com/LATEST/fetchBoard";
+					var endpointURL = "";
 					$.ajax({
 						url: endpointURL,
 						type: "GET",
@@ -222,7 +222,7 @@
                 </style>
 	</head>
 	<body>
-		<h1>r/place clone</h1>
+		<h1>Pixel Party</h1>
 
 		<canvas id="canvas" width="1000" height="1000" ></canvas>
 		<form id="setForm">

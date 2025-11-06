@@ -33,19 +33,20 @@ function convert2dToOff(x, y) {return x + dim * y;}
 
 async function retrieveBoard() {
 
+    var board = await redisClient.sendCommand(['GET', 'board']);
 
-    // var args = ["BITFIELD", "board"]
-    // for (var x=0; x<dim; x++) {
-    //     for (var y=0; y<dim; y++) {
-    //         var offset = convert2dToOff(x, y)
-    //         args.push("GET")
-    //         args.push("u4")
-    //         args.push(`#${offset.toString()}`)
-    //     }
+    // if (!board) { // initialize the board
+    //        var args = ["BITFIELD", "board"]
+    //         for (var x=0; x<dim; x++) {
+    //             for (var y=0; y<dim; y++) {
+    //                 var offset = convert2dToOff(x, y)
+    //                 args.push("GET")
+    //                 args.push("u4")
+    //                 args.push(`#${offset.toString()}`)
+    //             }
+    //         }
     // }
 
-
-    var board = await redisClient.sendCommand(['GET', 'board']);
     return board;
 }
 
