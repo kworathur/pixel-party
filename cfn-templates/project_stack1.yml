@@ -3,6 +3,11 @@ Metadata:
     Generator: "former2"
 Description: ""
 Parameters:
+
+  SourcesBucket:
+    Type: String
+    Description: "Enter the name of the S3 bucket that stores fetch_Board_S3.zip, place_api_handler.zip, board_snapshots.zip"
+
   VPCName:
     Type: String
     Default: "test-vpc"
@@ -53,6 +58,8 @@ Parameters:
     Description: "Specify the name for the snapshot scheduler."
 
 Resources:
+
+
     EC2Subnet:
         Type: "AWS::EC2::Subnet"
         Properties:
@@ -133,7 +140,7 @@ Resources:
     EC2VPCDHCPOptionsAssociation:
         Type: "AWS::EC2::VPCDHCPOptionsAssociation"
         Properties:
-            DhcpOptionsId: "dopt-049d0ddaa603b1867"
+            DhcpOptionsId: "default"
             VpcId: !GetAtt EC2Subnet.VpcId
 
     EC2RouteTable:
@@ -347,7 +354,7 @@ Resources:
             MaxCapacity: 10
             MinCapacity: 1
             ResourceId: !Sub "table/${BoardCellsTable}"
-            RoleARN: !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable"
+            RoleARN: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable"
             ScalableDimension: "dynamodb:table:ReadCapacityUnits"
             ServiceNamespace: "dynamodb"
             SuspendedState: 
@@ -361,7 +368,7 @@ Resources:
             MaxCapacity: 10
             MinCapacity: 1
             ResourceId: !Sub "table/${CooldownsTable}"
-            RoleARN: !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable"
+            RoleARN: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable"
             ScalableDimension: "dynamodb:table:WriteCapacityUnits"
             ServiceNamespace: "dynamodb"
             SuspendedState: 
@@ -374,13 +381,13 @@ Resources:
     HandlerFunction:
         Type: "AWS::Lambda::Function"
         Properties:
-            Description: ""
+            Description: "Websockets API handler function for board updates"
             FunctionName: !Ref ApiHandlerName
             Handler: "index.handler"
             Architectures: 
               - "x86_64"
             Code: 
-                S3Bucket: "project-bucket-abc"
+                S3Bucket: !Ref SourcesBucket
                 S3Key: "place_api_handler.zip"
             MemorySize: 128
             Role: !GetAtt HandlerIAMRole.Arn
@@ -408,14 +415,13 @@ Resources:
             AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
             MaxSessionDuration: 3600
             ManagedPolicyArns: 
-              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaBasicExecutionRole-029ee58b-a472-4979-910a-a15c00f84f92"
-              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaVPCAccessExecutionRole-cd2cd2f4-84b4-4cba-af5d-696ee1513da4"
-              - "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
-              - "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-              - "arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess"
-              - "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
-              - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-              - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonElastiCacheFullAccess"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonDynamoDBFullAccess"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
 
     HandlerSecurityGroup:
         Type: "AWS::EC2::SecurityGroup"
@@ -435,18 +441,19 @@ Resources:
                 IpProtocol: "-1"
 
 
+
     # Provision TakeSnapshot Lambda Function
 
     TakeSnapshotFunction:
         Type: "AWS::Lambda::Function"
         Properties:
-            Description: ""
+            Description: "Lambda function for taking board snapshots at regular intervals"
             FunctionName: !Ref TakeSnapshotName
             Handler: "index.handler"
             Architectures: 
               - "x86_64"
             Code: 
-                S3Bucket: "project-bucket-abc"
+                S3Bucket: !Ref SourcesBucket
                 S3Key: "board_snapshots.zip"
             MemorySize: 128
             Role: !GetAtt TakeSnapshotFunctionIAMRole.Arn
@@ -469,10 +476,10 @@ Resources:
             AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
             MaxSessionDuration: 3600
             ManagedPolicyArns: 
-              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaBasicExecutionRole-7418bad7-abaa-468f-a3b0-4b49a6c177cf"
-              - "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-              - "arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess"
-              - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+              
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonElastiCacheFullAccess"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
 
 
 
@@ -702,13 +709,13 @@ Resources:
     FetchBoardFunction:
         Type: "AWS::Lambda::Function"
         Properties:
-            Description: ""
+            Description: "Lambda function for fetching board state from S3"
             FunctionName: !Ref FetchBoardName 
-            Handler: "lambda_function.lambda_handler"
+            Handler: "fetch_board_s3.lambda_handler"
             Architectures: 
               - "x86_64"
             Code: 
-                S3Bucket: "project-bucket-abc"
+                S3Bucket: !Ref SourcesBucket
                 S3Key: "fetch_Board_S3.zip"
             MemorySize: 128
             Role: !GetAtt FetchBoardIAMRole.Arn
@@ -731,10 +738,10 @@ Resources:
             AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
             MaxSessionDuration: 3600
             ManagedPolicyArns: 
-              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaVPCAccessExecutionRole-d00a020f-10c3-4784-8a92-a53152c6e934"
-              - !Sub "arn:aws:iam::${AWS::AccountId}:policy/service-role/AWSLambdaBasicExecutionRole-69e09d8f-1b44-4db6-a2e9-55d84bf688fc"
-              - "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
-              - "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
+              - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3ReadOnlyAccess"
 
     # Create REST API in API Gateway 
 
