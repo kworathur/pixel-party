@@ -233,7 +233,6 @@ function getColorId(o) {
 
 async function updateBoard(connectionId, o){
 
-	// Following order in the r/place architecture diagram
 
 	// set new value in cassandra 
 	var currTime = getTimestamp();
