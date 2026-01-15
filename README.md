@@ -8,8 +8,7 @@ For instructions on setting up this project locally, please see the [project set
 A web application where thousands of users can simultaneously paint pixels of a large canvas, with updates being broadcast to all users in real-time.
 
 ![Inspration for the project](place.png)
-*r/place, the inspiration for this project*. See [How we built place](https://www.redditinc.com/blog/how-we-built-rplace) to get a glimpse into how one might build a system for millions of users. In this project, I added new performance optimizations beyond those described in the linked article.
-
+*r/place, the inspiration for this project*. 
 ## System Architecture 
 
 The system's architecture comprises of the following AWS services 
